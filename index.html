@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Energy Pro App</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2b6cb0">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial;
+background:#eef2f7;
+display:flex;
+justify-content:center;
+}
+
+.container{
+width:95%;
+max-width:750px;
+padding:10px;
+text-align:center;
+}
+
+.card{
+background:white;
+padding:15px;
+margin-top:10px;
+border-radius:12px;
+box-shadow:0 2px 10px rgba(0,0,0,0.1);
+}
+
+button{
+padding:8px;
+margin:4px;
+border:none;
+border-radius:6px;
+cursor:pointer;
+}
+
+.on{background:green;color:white;}
+.off{background:red;color:white;}
+.reset{background:orange;color:white;}
+
+select,input{
+width:90%;
+padding:8px;
+margin:5px;
+}
+
+canvas{margin-top:15px;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>⚡ Energy Pro App</h2>
+
+<!-- AJOUT -->
+<div class="card">
+
+<select id="room">
+<option>Salon</option>
+<option>Chambre</option>
+<option>Cuisine</option>
+</select>
+
+<select id="device">
+<option value="TV|100">Télévision (100W)</option>
+<option value="Fan|60">Ventilateur (60W)</option>
+<option value="Light|20">Ampoule (20W)</option>
+<option value="Fridge|150">Frigo (150W)</option>
+<option value="other">Autre</option>
+</select>
+
+<input id="name" placeholder="Nom (si autre)">
+<input id="power" placeholder="Puissance (W)">
+
+<button onclick="addDevice()">+ Ajouter appareil</button>
+</div>
+
+<!-- LISTE -->
+<div id="list"></div>
+
+<!-- TOTAL -->
+<div class="card">
+<h3>📊 Consommation globale</h3>
+<canvas id="chart"></canvas>
+<p id="total"></p>
+</div>
+
+</div>
+
+<script>
+
+/* ======================
+   DATA
+====================== */
+
+let devices = JSON.parse(localStorage.getItem("devices")) || {};
+
+function save(){
+localStorage.setItem("devices", JSON.stringify(devices));
+}
+
+/* ======================
+   ADD DEVICE
+====================== */
+
+function addDevice(){
+
+let room = document.getElementById("room").value;
+let sel = document.getElementById("device").value;
+
+let name, power;
+
+if(sel === "other"){
+name = document.getElementById("name").value;
+power = parseFloat(document.getElementById("power").value);
+}else{
+[name, power] = sel.split("|");
+power = parseFloat(power);
+}
+
+if(!name || !power) return;
+
+let full = room + " - " + name;
+
+devices[full] = {
+power,
+room,
+isOn:false,
+start:null,
+total:0,
+history:[]
+};
+
+save();
+render();
+}
+
+/* ======================
+   ON/OFF TOGGLE
+====================== */
+
+function toggle(name){
+let d = devices[name];
+
+if(!d.isOn){
+d.isOn = true;
+d.start = Date.now();
+}else{
+d.isOn = false;
+d.total += Date.now() - d.start;
+d.start = null;
+}
+
+save();
+render();
+}
+
+/* ======================
+   RESET
+====================== */
+
+function reset(name){
+devices[name].total = 0;
+devices[name].isOn = false;
+devices[name].start = null;
+devices[name].history = [];
+save();
+render();
+}
+
+/* ======================
+   kWh CALC
+====================== */
+
+function kwh(d){
+return (d.power * (d.total/3600000)) / 1000;
+}
+
+/* ======================
+   RENDER
+====================== */
+
+function render(){
+
+let html="";
+let labels=[];
+let data=[];
+
+for(let name in devices){
+
+let d = devices[name];
+let val = kwh(d);
+
+d.history.push(val);
+
+labels.push(name);
+data.push(val);
+
+html += `
+<div class="card">
+<h3>${name}</h3>
+<p>${d.power} W</p>
+
+<button class="${d.isOn?'off':'on'}" onclick="toggle('${name}')">
+${d.isOn?'OFF':'ON'}
+</button>
+
+<button class="reset" onclick="reset('${name}')">Reset</button>
+
+<p>${val.toFixed(4)} kWh</p>
+</div>
+`;
+}
+
+document.getElementById("list").innerHTML = html;
+
+let total = data.reduce((a,b)=>a+b,0);
+document.getElementById("total").innerText =
+"Total: " + total.toFixed(3) + " kWh";
+
+if(window.chart) window.chart.destroy();
+
+window.chart = new Chart(document.getElementById("chart"),{
+type:"line",
+data:{
+labels:labels,
+datasets:[{
+label:"Consommation",
+data:data,
+borderColor:"blue",
+tension:0.3
+}]
+},
+options:{responsive:true}
+});
+
+save();
+}
+
+setInterval(render,3000);
+render();
+
+</script>
+
+<script>
+if("serviceWorker" in navigator){
+navigator.serviceWorker.register("sw.js");
+}
+</script>
+
+</body>
+</html>
